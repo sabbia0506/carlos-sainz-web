@@ -721,6 +721,25 @@ const GLOBAL_CSS = `
   .page-pt { padding-top: 60px; }
   .not-found-page { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; gap: 16px; }
   .not-found-page a { color: #E8303A; text-decoration: none; font-weight: 700; }
+
+  /* ── ORDER HISTORY ── */
+  .orders-page { min-height: 100vh; padding: 80px 24px 60px; background: #0A1422; }
+  .orders-inner { max-width: 800px; margin: 0 auto; }
+  .orders-title { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; color: #fff; margin-bottom: 8px; }
+  .orders-sub { color: #52677D; font-size: 14px; margin-bottom: 32px; }
+  .order-card {
+    background: #0F1A2B; border: 1px solid #1C2E4A; border-radius: 14px;
+    padding: 24px; margin-bottom: 16px; transition: border-color 0.2s;
+  }
+  .order-card:hover { border-color: #52677D; }
+  .order-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+  .order-card-id { font-size: 12px; color: #52677D; margin-bottom: 4px; }
+  .order-card-date { font-size: 11px; color: #52677D; }
+  .order-card-status { background: rgba(110,231,183,0.15); color: #6EE7B7; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; letter-spacing: 1px; }
+  .order-items { border-top: 1px solid #1C2E4A; padding-top: 14px; margin-bottom: 14px; }
+  .order-item-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 13px; color: #BDC4D4; }
+  .order-item-row span:last-child { color: #fff; font-weight: 700; }
+  .order-
 `;
 
 function GlobalStyles() {
@@ -780,7 +799,8 @@ function Navbar() {
           <Link to="/#gallery" className="nav-link">Gallery</Link>
           <Link to="/#dashboard" className="nav-link">Dashboard</Link>
           <Link to="/#about" className="nav-link">About</Link>
-          <Link to="/shop" className="nav-link nav-shop-link">🏪 Shop</Link>
+          <Link to="/orders" className="nav-link">Orders</Link>
+          <Link to="/shop" className="nav-link nav-shop-link">Shop</Link>
         </div>
 
         <div className="nav-right">
@@ -815,7 +835,8 @@ function Navbar() {
         <Link to="/#gallery" className="nav-link" onClick={() => setMenuOpen(false)}>Gallery</Link>
         <Link to="/#dashboard" className="nav-link" onClick={() => setMenuOpen(false)}>Dashboard</Link>
         <Link to="/#about" className="nav-link" onClick={() => setMenuOpen(false)}>About</Link>
-        <Link to="/shop" className="nav-link nav-shop-link" onClick={() => setMenuOpen(false)}>🏪 Shop</Link>
+        <Link to="/orders" className="nav-link" onClick={() => setMenuOpen(false)}>Orders</Link>
+        <Link to="/shop" className="nav-link nav-shop-link" onClick={() => setMenuOpen(false)}>Shop</Link>
         {!user && (
           <div style={{ display: "flex", gap: 8, paddingTop: 8 }}>
             <Link to="/login" className="btn-nav-login" onClick={() => setMenuOpen(false)}>Login</Link>
@@ -1239,16 +1260,32 @@ function ProductDetailPage() {
 ───────────────────────────────────────────── */
 function CartPage() {
   const { cart, removeFromCart, updateQty, setCart } = useContext(CartContext);
-  const { user } = useContext(AuthContext);
+  const { user, token } = useContext(AuthContext);
   const { cartTotal } = useContext(CartContext);
   const [paid, setPaid] = useState(false);
   const navigate = useNavigate();
 
   if (!user) return <Navigate to="/login" />;
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     setPaid(true);
-    setTimeout(() => { setCart([]); setPaid(false); navigate("/shop"); }, 3000);
+    // Save order to backend
+    try {
+      await fetch(`${API_BASE}/orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          items: cart.map(i => ({ productId: i.id, name: i.name, size: i.size, price: i.discount > 0 ? i.price*(1-i.discount/100) : i.price, qty: i.qty })),
+          total: cartTotal,
+        })
+      });
+    } catch {
+      // fallback: save to localStorage
+      const existing = JSON.parse(localStorage.getItem("cs_local_orders") || "[]");
+      const newOrder = { _id: Date.now().toString(), items: cart.map(i => ({ productId: i.id, name: i.name, size: i.size, price: i.discount > 0 ? i.price*(1-i.discount/100) : i.price, qty: i.qty })), total: cartTotal, createdAt: new Date().toISOString() };
+      localStorage.setItem("cs_local_orders", JSON.stringify([newOrder, ...existing]));
+    }
+    setTimeout(() => { setCart([]); setPaid(false); navigate("/orders"); }, 2500);
   };
 
   if (paid) return (
@@ -1430,6 +1467,276 @@ function AuthPage({ type }) {
 }
 
 /* ─────────────────────────────────────────────
+   ORDER HISTORY PAGE
+───────────────────────────────────────────── */
+const ORDER_HISTORY_CSS = `
+  .orders-page { min-height: 100vh; padding: 80px 24px 60px; background: #0A1422; }
+  .orders-inner { max-width: 800px; margin: 0 auto; }
+  .orders-title { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; color: #fff; margin-bottom: 6px; }
+  .orders-sub { color: #52677D; font-size: 13px; margin-bottom: 32px; }
+  .order-card { background: #0F1A2B; border: 1px solid #1C2E4A; border-radius: 14px; padding: 22px; margin-bottom: 16px; transition: border-color 0.2s; }
+  .order-card:hover { border-color: #52677D; }
+  .order-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
+  .order-header-left p:first-child { font-size: 11px; color: #52677D; margin-bottom: 3px; letter-spacing: 1px; }
+  .order-header-left p:last-child { font-size: 11px; color: #52677D; }
+  .order-status { background: rgba(110,231,183,0.12); color: #6EE7B7; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 20px; letter-spacing: 1px; }
+  .order-items-list { border-top: 1px solid #1C2E4A; padding-top: 14px; margin-bottom: 14px; }
+  .order-item-row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 13px; color: #BDC4D4; }
+  .order-item-row strong { color: #fff; }
+  .order-total-row { display: flex; justify-content: space-between; padding-top: 12px; border-top: 1px solid #1C2E4A; margin-bottom: 20px; }
+  .order-total-label { font-size: 13px; color: #BDC4D4; }
+  .order-total-val { font-size: 17px; font-weight: 800; color: #fff; }
+
+  /* Star Rating */
+  .rating-section { margin-bottom: 16px; }
+  .rating-label { font-size: 11px; letter-spacing: 2px; color: #BDC4D4; font-weight: 700; margin-bottom: 10px; }
+  .stars-row { display: flex; gap: 6px; margin-bottom: 12px; }
+  .star-btn { background: none; border: none; cursor: pointer; padding: 0; transition: transform 0.15s; }
+  .star-btn:hover { transform: scale(1.2); }
+  .star-icon { width: 28px; height: 28px; }
+  .star-filled { fill: url(#starGrad); filter: drop-shadow(0 0 4px rgba(255,180,0,0.5)); }
+  .star-empty { fill: #1C2E4A; stroke: #52677D; stroke-width: 1; }
+
+  /* Review textarea */
+  .review-textarea {
+    width: 100%; padding: 10px 14px; background: #0A1422; border: 1px solid #1C2E4A;
+    border-radius: 8px; color: #fff; font-size: 13px; resize: vertical; min-height: 72px;
+    outline: none; transition: border-color 0.2s; font-family: 'DM Sans', sans-serif;
+    margin-bottom: 10px;
+  }
+  .review-textarea:focus { border-color: #E8303A; }
+  .review-textarea::placeholder { color: #52677D; }
+
+  /* Review display */
+  .review-display { background: #0A1422; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; border: 1px solid #1C2E4A; }
+  .review-display-stars { display: flex; gap: 4px; margin-bottom: 6px; }
+  .review-display-text { font-size: 13px; color: #BDC4D4; font-style: italic; line-height: 1.5; }
+
+  .order-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn-submit-review {
+    padding: 9px 20px; background: linear-gradient(135deg, #E8303A, #B02028);
+    border: none; border-radius: 8px; color: #fff; font-size: 13px; font-weight: 700;
+    cursor: pointer; transition: all 0.2s; font-family: 'DM Sans', sans-serif;
+  }
+  .btn-submit-review:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(232,48,58,0.4); }
+  .btn-delete-order {
+    padding: 9px 20px; background: none; border: 1px solid #1C2E4A;
+    border-radius: 8px; color: #52677D; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: 'DM Sans', sans-serif;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .btn-delete-order:hover { border-color: #F87171; color: #F87171; }
+  .review-saved-badge { font-size: 11px; color: #6EE7B7; margin-top: 6px; display: flex; align-items: center; gap: 4px; }
+`;
+
+function StarRating({ value, onChange, readOnly = false }) {
+  const [hovered, setHovered] = useState(0);
+  return (
+    <>
+      <svg width="0" height="0" style={{ position: "absolute" }}>
+        <defs>
+          <linearGradient id="starGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#FFD700" />
+            <stop offset="100%" stopColor="#FF8C00" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <div className="stars-row">
+        {[1,2,3,4,5].map(i => {
+          const active = (hovered || value) >= i;
+          return (
+            <button
+              key={i}
+              className="star-btn"
+              onClick={() => !readOnly && onChange(i)}
+              onMouseEnter={() => !readOnly && setHovered(i)}
+              onMouseLeave={() => !readOnly && setHovered(0)}
+              style={{ cursor: readOnly ? "default" : "pointer" }}
+            >
+              <svg className="star-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <polygon
+                  points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"
+                  className={active ? "star-filled" : "star-empty"}
+                />
+              </svg>
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function OrderHistoryPage() {
+  const { user, token } = useContext(AuthContext);
+  const navigate = useNavigate();
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [reviews, setReviews] = useState({});
+  const [draftRating, setDraftRating] = useState({});
+  const [draftReview, setDraftReview] = useState({});
+
+  if (!user) return <Navigate to="/login" />;
+
+  useEffect(() => {
+    fetchOrders();
+    const saved = localStorage.getItem("cs_reviews");
+    if (saved) setReviews(JSON.parse(saved));
+  }, []);
+
+  const fetchOrders = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/orders`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) setOrders(data.data.orders);
+    } catch {
+      // fallback: load from localStorage
+      const local = localStorage.getItem("cs_local_orders");
+      if (local) setOrders(JSON.parse(local));
+    }
+    setLoading(false);
+  };
+
+  const handleDelete = async (orderId) => {
+    if (!confirm("Hapus riwayat order ini?")) return;
+    try {
+      await fetch(`${API_BASE}/orders/${orderId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch {}
+    setOrders(prev => prev.filter(o => o._id !== orderId));
+    // also remove review
+    const newReviews = { ...reviews };
+    delete newReviews[orderId];
+    setReviews(newReviews);
+    localStorage.setItem("cs_reviews", JSON.stringify(newReviews));
+  };
+
+  const handleSubmitReview = (orderId) => {
+    const rating = draftRating[orderId] || 0;
+    if (!rating) { alert("Pilih rating bintang dulu!"); return; }
+    const newReviews = {
+      ...reviews,
+      [orderId]: { rating, text: draftReview[orderId] || "", date: new Date().toLocaleDateString("id-ID") }
+    };
+    setReviews(newReviews);
+    localStorage.setItem("cs_reviews", JSON.stringify(newReviews));
+    setDraftRating(prev => { const n = {...prev}; delete n[orderId]; return n; });
+    setDraftReview(prev => { const n = {...prev}; delete n[orderId]; return n; });
+  };
+
+  const TrashIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+    </svg>
+  );
+  const CheckIcon = () => (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+  );
+
+  return (
+    <>
+      <style>{ORDER_HISTORY_CSS}</style>
+      <div className="orders-page">
+        <div className="orders-inner">
+          <h2 className="orders-title">Order History</h2>
+          <p className="orders-sub">Riwayat pembelian kamu — berikan rating dan review untuk setiap pesanan.</p>
+
+          {loading && <p style={{ color: "#52677D" }}>Memuat...</p>}
+
+          {!loading && orders.length === 0 && (
+            <div className="empty-state">
+              <div className="empty-state-icon" style={{ fontSize: 48 }}>
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#52677D" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/>
+                </svg>
+              </div>
+              <p className="empty-state-text">Belum ada order.</p>
+              <Link to="/shop">Mulai belanja</Link>
+            </div>
+          )}
+
+          {orders.map(order => {
+            const review = reviews[order._id];
+            const hasDraftRating = draftRating[order._id];
+            const dateStr = new Date(order.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+            return (
+              <div key={order._id} className="order-card">
+                <div className="order-header">
+                  <div className="order-header-left">
+                    <p>ORDER #{order._id?.slice(-8).toUpperCase()}</p>
+                    <p>{dateStr}</p>
+                  </div>
+                  <span className="order-status">PAID</span>
+                </div>
+
+                <div className="order-items-list">
+                  {order.items.map((item, i) => (
+                    <div key={i} className="order-item-row">
+                      <span>{item.name} ({item.size}) x{item.qty}</span>
+                      <strong>{formatRp(item.price * item.qty)}</strong>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="order-total-row">
+                  <span className="order-total-label">Total</span>
+                  <span className="order-total-val">{formatRp(order.total)}</span>
+                </div>
+
+                {/* Review section */}
+                <div className="rating-section">
+                  <p className="rating-label">RATING & REVIEW</p>
+                  {review ? (
+                    <div className="review-display">
+                      <div className="review-display-stars">
+                        <StarRating value={review.rating} readOnly />
+                      </div>
+                      {review.text && <p className="review-display-text">"{review.text}"</p>}
+                      <p style={{ fontSize: 11, color: "#52677D", marginTop: 6 }}>{review.date}</p>
+                    </div>
+                  ) : (
+                    <>
+                      <StarRating
+                        value={draftRating[order._id] || 0}
+                        onChange={v => setDraftRating(prev => ({ ...prev, [order._id]: v }))}
+                      />
+                      <textarea
+                        className="review-textarea"
+                        placeholder="Tulis review kamu (opsional)..."
+                        value={draftReview[order._id] || ""}
+                        onChange={e => setDraftReview(prev => ({ ...prev, [order._id]: e.target.value }))}
+                      />
+                    </>
+                  )}
+                </div>
+
+                <div className="order-actions">
+                  {!review && (
+                    <button className="btn-submit-review" onClick={() => handleSubmitReview(order._id)}>
+                      Kirim Review
+                    </button>
+                  )}
+                  {review && (
+                    <div className="review-saved-badge"><CheckIcon /> Review tersimpan</div>
+                  )}
+                  <button className="btn-delete-order" onClick={() => handleDelete(order._id)}>
+                    <TrashIcon /> Hapus Order
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ─────────────────────────────────────────────
    APP SHELL
 ───────────────────────────────────────────── */
 export default function App() {
@@ -1452,6 +1759,7 @@ export default function App() {
                   <Route path="/shop" element={<ShopPage />} />
                   <Route path="/shop/product/:id" element={<ProductDetailPage />} />
                   <Route path="/cart" element={<CartPage />} />
+                  <Route path="/orders" element={<OrderHistoryPage />} />
                   <Route path="*" element={
                     <div className="not-found-page" style={{ paddingTop: 80 }}>
                       <h2 style={{ fontSize: 32 }}>404</h2>
